@@ -1,0 +1,4 @@
+{
+  "exemple.jpg": { "alt": "Description courte pour l'accessibilité", "comment": "Commentaire affiché sous la photo." },
+  "autre-photo": "Astuce : la clé peut être le nom sans extension, et une simple chaîne = commentaire."
+}
