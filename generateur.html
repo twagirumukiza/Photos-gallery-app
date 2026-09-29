@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Générateur de script galerie photo</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;padding:24px;background:#1a1a1a;color:#eee;font-family:system-ui,sans-serif;line-height:1.45}
+main{max-width:920px;margin:auto}
+h1{font-weight:600}
+section{background:#242424;border-radius:12px;padding:18px 20px;margin:16px 0}
+h2{margin:0 0 12px;font-size:18px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+label{display:block;font-size:13px;color:#bbb}
+label small{display:block;color:#888}
+input[type=text],input[type=number]{width:100%;margin-top:4px;padding:9px 10px;border-radius:8px;border:1px solid #444;background:#151515;color:#fff;font:inherit}
+input[type=color]{margin-top:4px;height:38px;width:100%;border:1px solid #444;border-radius:8px;background:#151515}
+input.bad{border-color:#e85a4a}
+button{padding:10px 16px;border:0;border-radius:8px;background:#e8b04a;color:#111;font:inherit;font-weight:600;cursor:pointer;margin:12px 8px 0 0}
+button.alt{background:#3a3a3a;color:#eee}
+.st{margin:10px 0 0;font-size:14px;color:#aaa;white-space:pre-line}
+.st.err{color:#ff8a7a}.st.ok{color:#8fd48f}
+.opts label{display:inline-block;margin:0 14px 6px 0;color:#eee}
+#drop{border:2px dashed #555;border-radius:12px;padding:28px;text-align:center;color:#aaa}
+#drop.over{border-color:#e8b04a;color:#fff}
+.row{display:grid;grid-template-columns:90px 1fr 1.6fr;gap:10px;align-items:center;padding:8px 0;border-top:1px solid #333}
+.row img{width:90px;height:64px;object-fit:cover;border-radius:6px;background:#000}
+.row .n{grid-column:2/4;font-size:12px;color:#888}
+textarea{width:100%;height:90px;margin-top:8px;padding:10px;border-radius:8px;border:1px solid #444;background:#151515;color:#dfe;font:12px ui-monospace,monospace}
+@media(max-width:600px){.row{grid-template-columns:70px 1fr}.row img{width:70px}.row input:last-child{grid-column:1/3}}
+</style>
+</head>
+<body>
+<main>
+<h1>Générateur de script galerie photo</h1>
+<p>Donnez-moi vos photos, répondez à quelques questions : je vous remets un script prêt à intégrer, qui appelle vos photos et affiche la galerie.</p>
+
+<section>
+  <h2>1. Vos photos</h2>
+  <div id="drop">Glissez vos photos ici ou <input type="file" id="files" multiple accept="image/jpeg,image/png"></div>
+  <p class="opts"><label><input type="checkbox" class="fm" value="jpg" checked> jpg</label><label><input type="checkbox" class="fm" value="jpeg" checked> jpeg</label><label><input type="checkbox" class="fm" value="png" checked> png</label></p>
+  <p class="st">Elles ne sont pas envoyées : le générateur ne lit que leurs noms et prépare l'aperçu. Elles doivent déjà être (ou seront) dans le dossier de votre site.</p>
+  <p class="st" id="st1"></p>
+</section>
+
+<section>
+  <h2>2. Questions</h2>
+  <div class="grid">
+    <label>Lien exact du dossier de votre site <small>avec le nom du projet si besoin, ex : https://twagirumukiza.github.io/London/</small><input type="text" id="site" placeholder="https://..."></label>
+    <label>Où afficher la galerie ? <small>id de la section, ex : #westminster (vide = vous placez la balise vous-même)</small><input type="text" id="target" placeholder="#westminster"></label>
+    <label>Dossier des photos <small>relatif au lien du site</small><input type="text" id="photos" value="photos"></label>
+    <label>Dossier des miniatures <input type="text" id="thumbs" value="photos/thumbs"></label>
+    <label>Défilement auto (ms) <small>0 = désactivé</small><input type="number" id="auto" value="0" min="0" step="500"></label>
+    <label>Couleur d'accent <input type="color" id="accent" value="#e8b04a"></label>
+  </div>
+</section>
+
+<section id="s3" hidden>
+  <h2>3. Alt et commentaires <small style="color:#888;font-weight:400">(facultatif)</small></h2>
+  <div id="list"></div>
+  <h2 style="margin-top:20px">Aperçu</h2>
+  <div id="prev"></div>
+  <button class="alt" id="refresh">Actualiser l'aperçu</button>
+</section>
+
+<section id="s4" hidden>
+  <h2>4. Votre script</h2>
+  <button id="dl">Télécharger galerie.js</button><button class="alt" id="inline">Copier le script complet</button><button class="alt" id="thz">Créer les miniatures (ZIP)</button>
+  <p class="st" id="st4"></p>
+  <p class="st">1) Déposez <b>galerie.js</b> à la racine de votre site. 2) Collez ces deux lignes où vous voulez la galerie :</p>
+  <textarea id="snip" readonly></textarea>
+  <button class="alt" id="copy">Copier les 2 lignes</button>
+  <p class="st">« Copier le script complet » donne une version à coller directement dans la page (sans fichier à déposer). Le ZIP de miniatures est à placer dans le dossier des miniatures.</p>
+</section>
+</main>
+
+<script type="text/plain" id="lib">/*! photo-gallery — galerie slider embarquable (aucune dépendance)
+ *  <photo-gallery></photo-gallery>
+ *  Attributs : photos="photos"  base="https://..."  images="a.jpg,b.jpg"
+ *              repo="user/repo"  branch="main"  autoplay="4000"
+ *              formats="jpg,jpeg,png"  meta="photos/meta.json" (alt + commentaire par photo)
+ *              thumbs="photos/thumbs" (dossier des miniatures)
+ */
+(function () {
+  "use strict";
+  var SCRIPT_BASE = document.currentScript ? document.currentScript.src.replace(/[^\/]*$/, "") : "";
+  // Configuration globale facultative (générée par generateur.html) : window.PHOTO_GALLERY_CONFIG
+  function cfg() { return window.PHOTO_GALLERY_CONFIG || {}; }
+  function attr(el, k) {
+    var v = el.getAttribute(k);
+    if (v !== null && v !== "") return v;
+    var d = cfg()[k];
+    return d == null || typeof d === "object" ? null : String(d);
+  }
+
+  function extRe(f) {
+    var l = (f || "jpg,jpeg,png").split(",").map(function (x) { return x.trim().replace(/^\./, "").toLowerCase(); }).filter(Boolean);
+    return new RegExp("\\.(" + l.join("|") + ")$", "i");
+  }
+
+  var CSS = [
+    ":host{display:block;--accent:#e8b04a;color:#fff;font-family:system-ui,sans-serif}",
+    ".pg{background:#111;border-radius:12px;overflow:hidden;outline:none}",
+    ".stage{position:relative;aspect-ratio:16/9;background:#000;display:flex;align-items:center;justify-content:center}",
+    ".stage img{max-width:100%;max-height:100%;object-fit:contain;cursor:zoom-in;user-select:none}",
+    ".nav{position:absolute;top:50%;transform:translateY(-50%);width:44px;height:44px;border-radius:50%;border:0;background:rgba(0,0,0,.5);color:#fff;font-size:22px;cursor:pointer;z-index:2}",
+    ".nav:hover,.bar button:hover{background:rgba(255,255,255,.25)}",
+    ".prev{left:12px}.next{right:12px}",
+    ".count{position:absolute;bottom:10px;right:12px;background:rgba(0,0,0,.55);padding:2px 10px;border-radius:99px;font-size:13px}",
+    ".thumbs{position:relative;display:flex;gap:6px;padding:8px;overflow-x:auto;scrollbar-width:thin}",
+    ".thumbs button{flex:0 0 auto;padding:0;border:2px solid transparent;border-radius:6px;background:none;cursor:pointer;opacity:.55;transition:.2s}",
+    ".thumbs button.on{border-color:var(--accent);opacity:1}",
+    ".thumbs img{display:block;height:64px;width:auto;border-radius:4px}",
+    ".cap{padding:10px 14px 2px;font-size:14px;line-height:1.4;color:#ddd}.cap:empty,.lbcap:empty{display:none}",
+    ".lbcap{position:absolute;left:0;right:0;bottom:0;padding:16px 20px;text-align:center;font-size:15px;background:linear-gradient(transparent,rgba(0,0,0,.85));z-index:2;pointer-events:none}",
+    ".msg{padding:24px;text-align:center;color:#aaa}",
+    ".lb{position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.95);display:none;touch-action:none;overflow:hidden}",
+    ".lb.open{display:block}",
+    ".lb img{position:absolute;left:50%;top:50%;max-width:92vw;max-height:80vh;user-select:none;-webkit-user-drag:none;cursor:zoom-in}",
+    ".bar{position:absolute;top:0;right:0;display:flex;gap:6px;padding:12px;z-index:3}",
+    ".bar button{width:40px;height:40px;border:0;border-radius:8px;background:rgba(255,255,255,.12);color:#fff;font-size:20px;cursor:pointer}"
+  ].join("");
+
+  // Déduit "utilisateur/dépôt" d'une URL GitHub Pages (user.github.io ou user.github.io/depot/)
+  function guessRepo(base) {
+    try {
+      var u = new URL(base || location.href, location.href), m = u.hostname.match(/^(.+)\.github\.io$/i);
+      if (!m) return "";
+      var seg = u.pathname.split("/").filter(Boolean);
+      return m[1] + "/" + (seg.length ? seg[0] : m[1] + ".github.io");
+    } catch (e) { return ""; }
+  }
+
+  function load(el, base, dir, IMG) {
+    if (!el.getAttribute("images") && Array.isArray(cfg().images)) return Promise.resolve(cfg().images.slice());
+    if (attr(el, "images"))
+      return Promise.resolve(attr(el, "images").split(",").map(function (s) { return s.trim(); }).filter(Boolean));
+    return fetch(base + dir + "/manifest.json", { cache: "no-cache" })
+      .then(function (r) { if (!r.ok) throw 0; return r.json(); })
+      .catch(function () {
+        var repo = attr(el, "repo") || guessRepo(base);
+        if (!repo) throw new Error("Liste des photos introuvable : ajoutez photos/manifest.json ou l'attribut repo=\"user/depot\"");
+        var ref = attr(el, "branch") ? "?ref=" + attr(el, "branch") : "";
+        return fetch("https://api.github.com/repos/" + repo + "/contents/" + dir + ref)
+          .then(function (r) { return r.json(); })
+          .then(function (l) {
+            if (!Array.isArray(l))
+              throw new Error("Dossier /" + dir + " introuvable dans " + repo + " (" + ((l && l.message) || "erreur GitHub") + ")");
+            return l.filter(function (f) { return f.type === "file" && IMG.test(f.name); })
+              .map(function (f) { return f.name; });
+          });
+      })
+      .then(function (l) {
+        return l.filter(function (n) { return IMG.test(n); })
+          .sort(function (a, b) { return a.localeCompare(b, undefined, { numeric: true }); });
+      });
+  }
+
+  customElements.define("photo-gallery", class extends HTMLElement {
+    connectedCallback() {
+      var self = this, root = this.attachShadow({ mode: "open" });
+      var base = attr(this, "base") || SCRIPT_BASE;
+      if (base && !/\/$/.test(base)) base += "/";
+      var dir = (attr(this, "photos") || "photos").replace(/\/$/, "");
+      root.innerHTML = "<style>" + CSS + "</style><div class='pg' tabindex='0'><div class='msg'>Chargement…</div></div>";
+      if (attr(this, "accent")) this.style.setProperty("--accent", attr(this, "accent"));
+      var IMG = extRe(attr(this, "formats"));
+      var metaUrl = attr(this, "meta") ? base + attr(this, "meta") : base + dir + "/meta.json";
+      load(this, base, dir, IMG).then(function (names) {
+        if (!names.length) throw new Error("Aucune photo trouvée dans /" + dir);
+        var md = self.metaData || cfg().meta; if (md) { build(names, md); return; }
+        return fetch(metaUrl, { cache: "no-cache" })
+          .then(function (r) { return r.ok ? r.json() : {}; })
+          .catch(function () { return {}; })
+          .then(function (meta) { build(names, meta || {}); });
+      }).catch(function (e) { root.querySelector(".pg").innerHTML = "<div class='msg'>" + e.message + "</div>"; });
+
+      function build(names, meta) {
+        var info = function (n) {
+          var m = meta[n] || meta[n.replace(/\.[^.]+$/, "")] || {};
+          if (typeof m === "string") m = { comment: m };
+          return { alt: m.alt || n, comment: m.comment || "" };
+        };
+        var full = function (n) { return self.urlMap && self.urlMap[n] ? self.urlMap[n].full : base + dir + "/" + encodeURIComponent(n); };
+        var tdir = (attr(self, "thumbs") || dir + "/thumbs").replace(/\/$/, "");
+        var thumb = function (n) { return self.urlMap && self.urlMap[n] ? self.urlMap[n].thumb : base + tdir + "/" + encodeURIComponent(n); };
+        var pg = root.querySelector(".pg");
+        pg.innerHTML =
+          "<div class='stage'><button class='nav prev' aria-label='Précédente'>❮</button>" +
+          "<img alt=''><button class='nav next' aria-label='Suivante'>❯</button><span class='count'></span></div>" +
+          "<div class='cap'></div><div class='thumbs'></div>";
+        var lb = document.createElement("div");
+        lb.className = "lb";
+        lb.innerHTML = "<div class='bar'><button data-a='in' title='Zoom +'>+</button><button data-a='out' title='Zoom −'>−</button>" +
+          "<button data-a='x' title='Fermer'>✕</button></div><button class='nav prev' aria-label='Précédente'>❮</button>" +
+          "<img alt=''><button class='nav next' aria-label='Suivante'>❯</button><div class='lbcap'></div>";
+        root.appendChild(lb);
+
+        var main = pg.querySelector(".stage img"), count = pg.querySelector(".count");
+        var strip = pg.querySelector(".thumbs"), big = lb.querySelector("img");
+        var cap = pg.querySelector(".cap"), lbcap = lb.querySelector(".lbcap");
+        main.onerror = function () { cap.textContent = "Photo introuvable : " + main.src; };
+        var i = 0, btns = [];
+        names.forEach(function (n, k) {
+          var b = document.createElement("button"), im = document.createElement("img");
+          im.src = thumb(n); im.loading = "lazy"; im.alt = info(n).alt;
+          im.onerror = function () { im.onerror = null; im.src = full(n); };
+          b.appendChild(im); b.onclick = function () { go(k); };
+          strip.appendChild(b); btns.push(b);
+        });
+
+        function go(n) {
+          i = (n + names.length) % names.length;
+          main.src = full(names[i]); big.src = full(names[i]); var inf = info(names[i]);
+          main.alt = big.alt = inf.alt; cap.textContent = lbcap.textContent = inf.comment;
+          count.textContent = (i + 1) + " / " + names.length;
+          btns.forEach(function (b, k) { b.classList.toggle("on", k === i); });
+          var b = btns[i];
+          strip.scrollTo({ left: b.offsetLeft - strip.clientWidth / 2 + b.clientWidth / 2, behavior: "smooth" });
+          resetZoom();
+        }
+
+        // --- Slider
+        pg.querySelector(".prev").onclick = function () { go(i - 1); };
+        pg.querySelector(".next").onclick = function () { go(i + 1); };
+        pg.addEventListener("keydown", function (e) {
+          if (e.key === "ArrowLeft") go(i - 1);
+          if (e.key === "ArrowRight") go(i + 1);
+        });
+        var sx = null;
+        main.addEventListener("pointerdown", function (e) { sx = e.clientX; });
+        main.addEventListener("pointerup", function (e) {
+          if (sx === null) return;
+          var dx = e.clientX - sx; sx = null;
+          if (dx > 50) go(i - 1); else if (dx < -50) go(i + 1); else openLb();
+        });
+        var auto = parseInt(attr(self, "autoplay"), 10), timer;
+        if (auto) {
+          var start = function () { timer = setInterval(function () { go(i + 1); }, auto); };
+          pg.onmouseenter = function () { clearInterval(timer); };
+          pg.onmouseleave = start; start();
+        }
+
+        // --- Lightbox + zoom
+        var s = 1, x = 0, y = 0, pts = new Map(), pd = 0, moved = false;
+        function apply() {
+          big.style.transform = "translate(-50%,-50%) translate(" + x + "px," + y + "px) scale(" + s + ")";
+          big.style.cursor = s > 1 ? "grab" : "zoom-in";
+        }
+        function resetZoom() { s = 1; x = y = 0; apply(); }
+        function zoom(f, cx, cy) {
+          var ns = Math.min(8, Math.max(1, s * f));
+          if (ns === 1) { x = y = 0; }
+          else { x = cx - (cx - x) * ns / s; y = cy - (cy - y) * ns / s; }
+          s = ns; apply();
+        }
+        function centered(e) { return [e.clientX - innerWidth / 2, e.clientY - innerHeight / 2]; }
+        function key(e) {
+          if (e.key === "Escape") closeLb();
+          else if (e.key === "ArrowLeft") go(i - 1);
+          else if (e.key === "ArrowRight") go(i + 1);
+          else if (e.key === "+" || e.key === "=") zoom(1.4, 0, 0);
+          else if (e.key === "-") zoom(1 / 1.4, 0, 0);
+          else if (e.key === "0") resetZoom();
+        }
+        function openLb() { lb.classList.add("open"); document.addEventListener("keydown", key); resetZoom(); }
+        function closeLb() { lb.classList.remove("open"); document.removeEventListener("keydown", key); pg.focus(); }
+
+        lb.querySelector(".prev").onclick = function () { go(i - 1); };
+        lb.querySelector(".next").onclick = function () { go(i + 1); };
+        lb.querySelector(".bar").onclick = function (e) {
+          var a = e.target.dataset.a;
+          if (a === "x") closeLb(); else if (a === "in") zoom(1.4, 0, 0); else if (a === "out") zoom(1 / 1.4, 0, 0);
+        };
+        lb.addEventListener("click", function (e) { if (e.target === lb) closeLb(); });
+        lb.addEventListener("wheel", function (e) {
+          e.preventDefault(); var c = centered(e); zoom(e.deltaY < 0 ? 1.2 : 1 / 1.2, c[0], c[1]);
+        }, { passive: false });
+        big.addEventListener("dblclick", function (e) {
+          if (s > 1) resetZoom(); else { var c = centered(e); zoom(2.5, c[0], c[1]); }
+        });
+        big.addEventListener("dragstart", function (e) { e.preventDefault(); });
+        lb.addEventListener("pointerdown", function (e) {
+          if (e.target !== big) return;
+          pts.set(e.pointerId, [e.clientX, e.clientY]); moved = false;
+          if (pts.size === 2) { var p = Array.from(pts.values()); pd = Math.hypot(p[0][0] - p[1][0], p[0][1] - p[1][1]); }
+        });
+        lb.addEventListener("pointermove", function (e) {
+          var prev = pts.get(e.pointerId); if (!prev) return;
+          pts.set(e.pointerId, [e.clientX, e.clientY]);
+          if (pts.size === 2) {
+            var p = Array.from(pts.values()), d = Math.hypot(p[0][0] - p[1][0], p[0][1] - p[1][1]);
+            zoom(d / pd, (p[0][0] + p[1][0]) / 2 - innerWidth / 2, (p[0][1] + p[1][1]) / 2 - innerHeight / 2); pd = d;
+          } else if (s > 1) { x += e.clientX - prev[0]; y += e.clientY - prev[1]; apply(); }
+        });
+        var up = function (e) { pts.delete(e.pointerId); };
+        lb.addEventListener("pointerup", up); lb.addEventListener("pointercancel", up);
+
+        go(0);
+      }
+    }
+  });
+
+  // Insertion automatique : PHOTO_GALLERY_CONFIG.target = "#westminster" (sélecteur CSS de l'endroit voulu)
+  function autoInsert() {
+    var t = cfg().target;
+    if (!t) return;
+    function place() {
+      var host;
+      try { host = document.querySelector(t); } catch (e) { return; }
+      if (host && !host.querySelector("photo-gallery")) host.appendChild(document.createElement("photo-gallery"));
+    }
+    place();
+    new MutationObserver(place).observe(document.documentElement, { childList: true, subtree: true });
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", autoInsert); else autoInsert();
+})();
+</script>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const S = { items: [] };
+const clean = p => p.trim().replace(/^\/+|\/+$/g, "");
+const nat = (a, b) => a.localeCompare(b, undefined, { numeric: true });
+const formats = () => [...document.querySelectorAll(".fm:checked")].map(i => i.value);
+const say = (id, m, c) => { const e = $(id); e.textContent = m; e.className = "st " + (c || ""); };
+const fail = (m, f) => Object.assign(new Error(m), { f });
+const bad = e => { say("st4", e.message, "err"); if (e.f) { $(e.f).classList.add("bad"); $(e.f).focus(); } };
+
+// le composant est chargé depuis la même source que le script généré (pour l'aperçu)
+const LIB = $("lib").textContent;
+{ const s = document.createElement("script"); s.textContent = LIB; document.head.append(s); }
+
+async function makeThumb(f, name) {
+  const bmp = await createImageBitmap(f), type = /\.png$/i.test(name) ? "image/png" : "image/jpeg";
+  const k = Math.min(1, 160 / bmp.height), w = Math.max(1, Math.round(bmp.width * k)), h = Math.max(1, Math.round(bmp.height * k));
+  const c = document.createElement("canvas"); c.width = w; c.height = h; c.getContext("2d").drawImage(bmp, 0, 0, w, h);
+  if (bmp.close) bmp.close();
+  return new Promise(r => c.toBlob(r, type, 0.85));
+}
+async function addFiles(list) {
+  const re = new RegExp("\\.(" + (formats().join("|") || "x") + ")$", "i");
+  const files = [...list].filter(f => re.test(f.name)), errs = [];
+  if (!files.length) return say("st1", "Aucune photo aux formats choisis (" + formats().join(", ") + ").", "err");
+  for (let i = 0; i < files.length; i++) {
+    say("st1", "Lecture " + (i + 1) + "/" + files.length + "…");
+    const f = files[i];
+    if (S.items.some(x => x.name === f.name)) continue;
+    try { const th = await makeThumb(f, f.name); S.items.push({ name: f.name, thumb: th, fullUrl: URL.createObjectURL(f), thumbUrl: URL.createObjectURL(th) }); }
+    catch (e) { errs.push(f.name); }
+  }
+  S.items.sort((a, b) => nat(a.name, b.name));
+  say("st1", S.items.length + " photo(s) prête(s)." + (errs.length ? "\nIllisibles : " + errs.join(", ") : "") + (list.length > files.length ? "\n" + (list.length - files.length) + " fichier(s) ignoré(s) (format non choisi)." : ""), "ok");
+  render(); $("s3").hidden = $("s4").hidden = false; preview(); refreshOut();
+}
+$("files").onchange = e => addFiles(e.target.files);
+const drop = $("drop");
+["dragenter", "dragover"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => addFiles(e.dataTransfer.files));
+
+function render() {
+  const box = $("list"), keep = meta(); box.innerHTML = "";
+  S.items.forEach(it => {
+    const m = keep[it.name] || {}, r = document.createElement("div"); r.className = "row"; r.dataset.n = it.name;
+    const im = document.createElement("img"); im.src = it.thumbUrl;
+    const a = document.createElement("input"); a.type = "text"; a.placeholder = "Alt"; a.className = "alt"; a.value = m.alt || "";
+    const c = document.createElement("input"); c.type = "text"; c.placeholder = "Commentaire"; c.className = "com"; c.value = m.comment || "";
+    const l = document.createElement("div"); l.className = "n"; l.textContent = it.name;
+    r.append(im, a, c, l); box.append(r);
+  });
+}
+function meta() {
+  const o = {};
+  document.querySelectorAll(".row").forEach(r => {
+    const alt = r.querySelector(".alt").value.trim(), comment = r.querySelector(".com").value.trim();
+    if (alt || comment) o[r.dataset.n] = Object.assign(alt ? { alt } : {}, comment ? { comment } : {});
+  });
+  return o;
+}
+function preview() {
+  $("prev").innerHTML = "";
+  const g = document.createElement("photo-gallery"), map = {};
+  S.items.forEach(it => map[it.name] = { full: it.fullUrl, thumb: it.thumbUrl });
+  g.setAttribute("images", S.items.map(i => i.name).join(","));
+  if (+$("auto").value > 0) g.setAttribute("autoplay", $("auto").value);
+  g.style.setProperty("--accent", $("accent").value);
+  g.urlMap = map; g.metaData = meta(); $("prev").append(g);
+}
+
+// ---------- Génération du script (questions obligatoires)
+function siteUrl() {
+  let u = $("site").value.trim();
+  if (!u) throw fail("Quel est le lien de votre site ? J'en ai besoin pour que le script retrouve vos photos (ex : https://twagirumukiza.github.io/).", "site");
+  if (!/^https?:\/\//i.test(u)) u = "https://" + u;
+  try { new URL(u); } catch (e) { throw fail("Ce lien n'est pas valide. Exemple : https://twagirumukiza.github.io/", "site"); }
+  return u.replace(/\/?$/, "/");
+}
+function build() {
+  document.querySelectorAll("input.bad").forEach(i => i.classList.remove("bad"));
+  if (!S.items.length) throw fail("Déposez d'abord vos photos (section 1).");
+  const site = siteUrl();
+  const cfg = { base: site, photos: clean($("photos").value), thumbs: clean($("thumbs").value), formats: formats().join(","), images: S.items.map(i => i.name), meta: meta(), accent: $("accent").value };
+  if (+$("auto").value > 0) cfg.autoplay = +$("auto").value;
+  if ($("target").value.trim()) cfg.target = $("target").value.trim();
+  const js = "/* Galerie photo — généré par generateur.html */\nwindow.PHOTO_GALLERY_CONFIG = " + JSON.stringify(cfg, null, 2).replace(/</g, "\\u003c") + ";\n" + LIB;
+  return { site, js, cfg };
+}
+const tagLine = () => $("target").value.trim() ? "" : "<photo-gallery></photo-gallery>\n";
+function checkPhotos(site, cfg) {
+  const url = site + cfg.photos + "/" + encodeURIComponent(S.items[0].name), im = new Image();
+  im.onload = () => say("st4", "✓ Photo trouvée à l'adresse indiquée :\n" + url, "ok");
+  im.onerror = () => say("st4", "Je ne trouve pas cette photo : " + url + "\nVérifiez le lien du site (il doit inclure le nom du projet, ex : https://twagirumukiza.github.io/London/) et le dossier des photos. Si vous ne les avez pas encore déposées, c'est normal.", "err");
+  im.src = url;
+}
+function refreshOut() {
+  try { const { site, cfg } = build(); $("snip").value = tagLine() + '<script src="' + site + 'galerie.js"><\/script>'; say("st4", ""); checkPhotos(site, cfg); }
+  catch (e) { $("snip").value = ""; bad(e); }
+}
+function save(blob, name) { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click(); }
+const copy = t => navigator.clipboard && navigator.clipboard.writeText(t);
+
+$("dl").onclick = () => { try { save(new Blob([build().js], { type: "text/javascript" }), "galerie.js"); say("st4", "galerie.js téléchargé : déposez-le à la racine de votre site.", "ok"); } catch (e) { bad(e); } };
+$("inline").onclick = () => { try { copy(tagLine() + '<script>\n' + build().js.replace(/<\/script/gi, "<\\/script") + '\n<\/script>'); say("st4", "Script complet copié : collez-le dans votre page.", "ok"); } catch (e) { bad(e); } };
+$("copy").onclick = () => { refreshOut(); if ($("snip").value) { copy($("snip").value); say("st4", "Les 2 lignes sont copiées.", "ok"); } };
+$("refresh").onclick = () => { preview(); refreshOut(); };
+["site", "target", "photos", "thumbs", "auto", "accent"].forEach(id => $(id).addEventListener("change", () => { if (S.items.length) { preview(); refreshOut(); } }));
+
+// ---------- ZIP des miniatures
+function crc32(b) {
+  let t = crc32.t; if (!t) { t = crc32.t = []; for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } }
+  let r = -1; for (let i = 0; i < b.length; i++) r = t[(r ^ b[i]) & 255] ^ (r >>> 8); return (r ^ -1) >>> 0;
+}
+function zip(fl) {
+  const enc = new TextEncoder(), parts = [], cen = []; let off = 0;
+  fl.forEach(f => {
+    const n = enc.encode(f.name), d = f.data, crc = crc32(d);
+    const h = new DataView(new ArrayBuffer(30));
+    h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(12, 0x21, true);
+    h.setUint32(14, crc, true); h.setUint32(18, d.length, true); h.setUint32(22, d.length, true); h.setUint16(26, n.length, true);
+    parts.push(h.buffer, n, d);
+    const c = new DataView(new ArrayBuffer(46));
+    c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true); c.setUint16(14, 0x21, true);
+    c.setUint32(16, crc, true); c.setUint32(20, d.length, true); c.setUint32(24, d.length, true); c.setUint16(28, n.length, true); c.setUint32(42, off, true);
+    cen.push(c.buffer, n); off += 30 + n.length + d.length;
+  });
+  const size = cen.reduce((a, b) => a + b.byteLength, 0), e = new DataView(new ArrayBuffer(22));
+  e.setUint32(0, 0x06054b50, true); e.setUint16(8, fl.length, true); e.setUint16(10, fl.length, true); e.setUint32(12, size, true); e.setUint32(16, off, true);
+  return new Blob(parts.concat(cen, [e.buffer]), { type: "application/zip" });
+}
+$("thz").onclick = async () => {
+  if (!S.items.length) return bad(fail("Déposez d'abord vos photos (section 1)."));
+  const dir = clean($("thumbs").value);
+  const fl = []; for (const it of S.items) fl.push({ name: dir + "/" + it.name, data: new Uint8Array(await it.thumb.arrayBuffer()) });
+  save(zip(fl), "miniatures.zip"); say("st4", "miniatures.zip téléchargé : décompressez-le dans « " + dir + " » sur votre site.", "ok");
+};
+</script>
+</body>
+</html>

@@ -123,6 +123,7 @@
         var main = pg.querySelector(".stage img"), count = pg.querySelector(".count");
         var strip = pg.querySelector(".thumbs"), big = lb.querySelector("img");
         var cap = pg.querySelector(".cap"), lbcap = lb.querySelector(".lbcap");
+        main.onerror = function () { cap.textContent = "Photo introuvable : " + main.src; };
         var i = 0, btns = [];
         names.forEach(function (n, k) {
           var b = document.createElement("button"), im = document.createElement("img");
@@ -223,4 +224,18 @@
       }
     }
   });
+
+  // Insertion automatique : PHOTO_GALLERY_CONFIG.target = "#westminster" (sélecteur CSS de l'endroit voulu)
+  function autoInsert() {
+    var t = cfg().target;
+    if (!t) return;
+    function place() {
+      var host;
+      try { host = document.querySelector(t); } catch (e) { return; }
+      if (host && !host.querySelector("photo-gallery")) host.appendChild(document.createElement("photo-gallery"));
+    }
+    place();
+    new MutationObserver(place).observe(document.documentElement, { childList: true, subtree: true });
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", autoInsert); else autoInsert();
 })();
